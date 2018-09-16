@@ -1,5 +1,7 @@
 const Evernote = require( 'evernote' );
 const Fetcher  = require( './fetcher' );
+const fs       = require( 'fs-extra' );
+const path     = require( 'path' );
 
 require( 'dotenv' ).config();
 
@@ -16,15 +18,21 @@ function main() {
 	});
 	const noteStore = enClient.getNoteStore();
 
+	const notebook = 'Journal';
+
 	const fetcher = new Fetcher( noteStore );
 	fetcher.setup().then( () => {
 		if ( fetcher.isSetup ) {
-			fetcher.getNotebookNotes( '2df88f59-aa96-4c79-9b5e-471037d94400' )
-			.then( r => r.notes.map( note => console.log( note ) ) );
-			// fetcher.getNoteContent( '8fd2f97e-5cfe-44a2-b593-d0ede783dcf3' )
-			// .then( content => {
-			// 	console.log( content );
-			// } );
+			const guid = fetcher.getNotebookGuidByName( notebook );
+			if ( ! guid ) {
+				throw new Error( `Could not find notebook: ${ notebook }` );
+			}
+			fetcher.getNotebookNotes( guid )
+			.then( results => {
+				return Promise.all( results.notes.map( async ({ content, title }) => {
+					await fs.outputFile( path.resolve( __dirname, notebook, title + '.md' ), content );
+				} ) );
+			} );
 		}
 	} ).catch( err => {
 		console.error( err );
