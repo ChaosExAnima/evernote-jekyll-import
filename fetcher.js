@@ -1,4 +1,6 @@
 const TurndownService = require( 'turndown' );
+const fs              = require( 'fs-extra' );
+const path            = require( 'path' );
 
 class Fetcher {
 	constructor( store ) {
@@ -49,13 +51,15 @@ class Fetcher {
 				notebookGuid: notebook
 			}, offset, 250, { includeTitle: true } );
 
-			const notes = await results.notes.map( async ({ guid, title }) => {
-				const content = await this.getNoteContent( guid );
-				{
-					title,
-					content
-				}
-			} );
+			const notes = await Promise.all(
+				results.notes.map( async ({ guid, title }) => {
+					const content = await this.getNoteContent( guid );
+					{
+						title,
+						content
+					}
+				} )
+			);
 
 			return {
 				notes,
@@ -73,10 +77,7 @@ class Fetcher {
 		}
 		let note = {};
 		try {
-			note = await this.noteStore.getNoteWithResultSpec( guid, {
-				includeContent: true,
-				includeResourcesData: true
-			} );
+			note = await this.getNoteByGuid( guid );
 		} catch ( err ) {
 			return this.handleError( err );
 		}
@@ -86,6 +87,29 @@ class Fetcher {
 		const file = this.attributesToHeader( note ) + '\n' + content;
 
 		return file;
+	}
+
+	async getNoteByGuid( guid ) {
+		const cacheFile = path.resolve( __dirname, '.cache', guid );
+		let note;
+		try {
+			note = await fs.readJson( cacheFile );
+		} catch ( err ) {}
+
+		if ( note ) {
+			return note;
+		}
+
+		try {
+			note = await this.noteStore.getNoteWithResultSpec( guid, {
+				includeContent: true,
+				includeResourcesData: true
+			} );
+			await fs.writeJson( cacheFile, note );
+		} catch ( err ) {
+			this.handleError( err );
+		}
+		return note;
 	}
 
 	handleError( error ) {
